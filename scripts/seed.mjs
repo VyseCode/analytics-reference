@@ -36,6 +36,7 @@ const siteSchema = new mongoose.Schema(
       maxlength: 253,
     },
     trackingId: { type: String, required: true, unique: true, trim: true },
+    eventsCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );
@@ -215,6 +216,13 @@ async function main() {
   }
 
   await Event.insertMany(events, { ordered: false });
+
+  const counts = await Event.aggregate([
+    { $group: { _id: "$site", count: { $sum: 1 } } },
+  ]);
+  for (const entry of counts) {
+    await Site.updateOne({ _id: entry._id }, { $set: { eventsCount: entry.count } });
+  }
 
   await Funnel.create([
     {

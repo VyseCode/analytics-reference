@@ -77,6 +77,7 @@ export async function POST(request: Request) {
         referrer: body.referrer,
         device: body.device,
       });
+      await Site.updateOne({ _id: site._id }, { $inc: { eventsCount: 1 } });
       return withCors(ok({ ok: true, duplicate: false }, 202));
     } catch (error) {
       if (isDuplicateKey(error)) {

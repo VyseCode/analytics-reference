@@ -1,12 +1,27 @@
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { ownedSite } from "@/lib/access";
 import { getEvents } from "@/lib/queries";
 import { SiteTabs } from "@/components/SiteTabs";
 import { EventsExplorer } from "@/components/EventsExplorer";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+
+type Params = {
+  limit: number;
+  offset: number;
+  name: string;
+  visitorId: string;
+  sort: "asc" | "desc";
+};
 
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+async function EventsSection({ siteId, params }: { siteId: string; params: Params }) {
+  const data = await getEvents(siteId, params);
+  return <EventsExplorer siteId={siteId} data={data} params={params} />;
 }
 
 export default async function EventsPage({
@@ -28,8 +43,7 @@ export default async function EventsPage({
   const name = first(query.name) ?? "";
   const visitorId = first(query.visitorId) ?? "";
   const sort = first(query.sort) === "asc" ? "asc" : "desc";
-
-  const data = await getEvents(id, { limit, offset, name, visitorId, sort });
+  const parsed: Params = { limit, offset, name, visitorId, sort };
 
   return (
     <div className="space-y-6">
@@ -40,11 +54,9 @@ export default async function EventsPage({
         </p>
       </div>
       <SiteTabs siteId={id} />
-      <EventsExplorer
-        siteId={id}
-        data={data}
-        params={{ limit, offset, name, visitorId, sort }}
-      />
+      <Suspense fallback={<LoadingSkeleton />}>
+        <EventsSection siteId={id} params={parsed} />
+      </Suspense>
     </div>
   );
 }

@@ -1,7 +1,13 @@
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Event } from "@/models/Event";
-import type { FunnelResultDTO, FunnelStepResult } from "@/lib/types";
+import type {
+  AnalyticsDTO,
+  BreakdownItem,
+  FunnelResultDTO,
+  FunnelStepResult,
+  SeriesPoint,
+} from "@/lib/types";
 
 export type LeanFunnel = {
   _id: Types.ObjectId;
@@ -84,4 +90,100 @@ export async function computeFunnels(
       createdAt: funnel.createdAt.toISOString(),
     };
   });
+}
+
+type LeanAggregateEvent = {
+  name: string;
+  visitorId: string;
+  url: string;
+  referrer: string;
+  device?: { type?: string };
+  createdAt: Date;
+};
+
+export async function getAnalytics(
+  siteId: string,
+  days: number,
+): Promise<AnalyticsDTO> {
+  await connectDB();
+
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const dayKeys: string[] = [];
+  for (let index = days - 1; index >= 0; index -= 1) {
+    dayKeys.push(new Date(today.getTime() - index * 86_400_000).toISOString().slice(0, 10));
+  }
+  const cutoff = new Date(`${dayKeys[0]}T00:00:00.000Z`);
+
+  const docs = (await Event.find({
+    site: new Types.ObjectId(siteId),
+    createdAt: { $gte: cutoff },
+  })
+    .select("name visitorId url referrer device createdAt")
+    .sort({ createdAt: 1 })
+    .lean()) as unknown as LeanAggregateEvent[];
+
+  const perDay = new Map<string, { visitors: Set<string>; pageviews: number; events: number }>();
+  for (const key of dayKeys) {
+    perDay.set(key, { visitors: new Set<string>(), pageviews: 0, events: 0 });
+  }
+  const allVisitors = new Set<string>();
+  const pages = new Map<string, number>();
+  const referrers = new Map<string, number>();
+  const devices = new Map<string, number>();
+
+  for (const doc of docs) {
+    const key = doc.createdAt.toISOString().slice(0, 10);
+    const bucket = perDay.get(key);
+    if (bucket) {
+      bucket.visitors.add(doc.visitorId);
+      bucket.events += 1;
+      if (doc.name === "pageview") bucket.pageviews += 1;
+    }
+    allVisitors.add(doc.visitorId);
+    pages.set(doc.url, (pages.get(doc.url) ?? 0) + 1);
+    const referrer = doc.referrer || "direct";
+    referrers.set(referrer, (referrers.get(referrer) ?? 0) + 1);
+    const device = doc.device?.type || "desktop";
+    devices.set(device, (devices.get(device) ?? 0) + 1);
+  }
+
+  const series: SeriesPoint[] = dayKeys.map((key) => {
+    const bucket = perDay.get(key)!;
+    return {
+      date: key,
+      label: new Date(`${key}T00:00:00.000Z`).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      }),
+      visitors: bucket.visitors.size,
+      pageviews: bucket.pageviews,
+      events: bucket.events,
+    };
+  });
+
+  function top(map: Map<string, number>, limit = 10): BreakdownItem[] {
+    return [...map.entries()]
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, limit);
+  }
+
+  return {
+    range: {
+      from: dayKeys[0],
+      to: dayKeys[dayKeys.length - 1],
+      days,
+    },
+    totals: {
+      visitors: allVisitors.size,
+      pageviews: docs.filter((doc) => doc.name === "pageview").length,
+      events: docs.length,
+    },
+    series,
+    topPages: top(pages),
+    topReferrers: top(referrers),
+    devices: top(devices),
+  };
 }

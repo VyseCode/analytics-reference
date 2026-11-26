@@ -19,7 +19,7 @@ export function EventsExplorer({ siteId, data, params }: Props) {
   const [name, setName] = useState(params.name);
   const [visitorId, setVisitorId] = useState(params.visitorId);
   const [sort, setSort] = useState(params.sort);
-  const [limit, setLimit] = useState(params.limit);
+  const limit = params.limit;
 
   function navigate(next: Partial<Params>) {
     const merged: Params = {

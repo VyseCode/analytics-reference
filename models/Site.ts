@@ -6,6 +6,7 @@ export interface ISite {
   name: string;
   domain: string;
   trackingId: string;
+  eventsCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,6 +28,7 @@ const siteSchema = new Schema<ISite>(
       maxlength: 253,
     },
     trackingId: { type: String, required: true, unique: true, trim: true },
+    eventsCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 );

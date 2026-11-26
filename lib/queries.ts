@@ -1,7 +1,9 @@
 import { Types } from "mongoose";
 import { connectDB } from "@/lib/db";
 import { Event } from "@/models/Event";
-import type { EventDTO } from "@/lib/types";
+import { Site } from "@/models/Site";
+import { toSiteDTO, type LeanSite } from "@/lib/access";
+import type { EventDTO, SiteDTO } from "@/lib/types";
 
 type LeanEvent = {
   _id: Types.ObjectId;
@@ -75,6 +77,73 @@ export async function getEvents(
       limit,
       offset,
       hasMore: offset + events.length < total,
+    },
+  };
+}
+
+type LeanOverviewEvent = {
+  site: Types.ObjectId;
+  name: string;
+  visitorId: string;
+};
+
+export type OverviewResult = {
+  sites: Array<SiteDTO & { events: number; visitors: number }>;
+  totals: { sites: number; events: number; visitors: number; pageviews: number };
+};
+
+export async function getOverview(userId: string): Promise<OverviewResult> {
+  await connectDB();
+
+  const siteDocs = (await Site.find({ owner: new Types.ObjectId(userId) })
+    .select("name domain trackingId createdAt")
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean()) as unknown as LeanSite[];
+
+  const siteIds = siteDocs.map((site) => site._id);
+  const events =
+    siteIds.length > 0
+      ? ((await Event.find({
+          site: { $in: siteIds },
+          createdAt: { $gte: new Date(Date.now() - 30 * 86_400_000) },
+        })
+          .select("site name visitorId")
+          .lean()) as unknown as LeanOverviewEvent[])
+      : [];
+
+  const counts = new Map<string, { events: number; visitors: Set<string> }>();
+  for (const site of siteDocs) {
+    counts.set(site._id.toString(), { events: 0, visitors: new Set<string>() });
+  }
+  const allVisitors = new Set<string>();
+  let pageviews = 0;
+
+  for (const event of events) {
+    const siteId = event.site.toString();
+    const count = counts.get(siteId);
+    if (count) {
+      count.events += 1;
+      count.visitors.add(event.visitorId);
+    }
+    allVisitors.add(event.visitorId);
+    if (event.name === "pageview") pageviews += 1;
+  }
+
+  return {
+    sites: siteDocs.map((site) => {
+      const count = counts.get(site._id.toString());
+      return {
+        ...toSiteDTO(site),
+        events: count?.events ?? 0,
+        visitors: count?.visitors.size ?? 0,
+      };
+    }),
+    totals: {
+      sites: siteDocs.length,
+      events: events.length,
+      visitors: allVisitors.size,
+      pageviews,
     },
   };
 }

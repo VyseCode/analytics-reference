@@ -1,20 +1,26 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { connectDB } from "@/lib/db";
 import { Site } from "@/models/Site";
 import { SitesClient } from "@/components/SitesClient";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { toSiteDTO, type LeanSite } from "@/lib/access";
 
-export default async function SitesPage() {
-  const session = await getSession();
-  if (!session) redirect("/login");
-
+async function SitesSection({ userId }: { userId: string }) {
   await connectDB();
-  const sites = (await Site.find({ owner: session.userId })
+  const sites = (await Site.find({ owner: userId })
     .select("name domain trackingId createdAt")
     .sort({ createdAt: -1 })
     .limit(100)
     .lean()) as unknown as LeanSite[];
+
+  return <SitesClient sites={sites.map(toSiteDTO)} />;
+}
+
+export default async function SitesPage() {
+  const session = await getSession();
+  if (!session) redirect("/login");
 
   return (
     <div className="space-y-6">
@@ -24,7 +30,9 @@ export default async function SitesPage() {
           Manage the properties you track with Pulse.
         </p>
       </div>
-      <SitesClient sites={sites.map(toSiteDTO)} />
+      <Suspense fallback={<LoadingSkeleton />}>
+        <SitesSection userId={session.userId} />
+      </Suspense>
     </div>
   );
 }

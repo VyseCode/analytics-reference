@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { ownedSite } from "@/lib/access";
@@ -5,6 +6,22 @@ import { Funnel } from "@/models/Funnel";
 import { computeFunnels, type LeanFunnel } from "@/lib/analytics";
 import { SiteTabs } from "@/components/SiteTabs";
 import { FunnelsClient } from "@/components/FunnelsClient";
+import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+
+async function FunnelsSection({ siteId, days }: { siteId: string; days: number }) {
+  const funnels = (await Funnel.find({ site: siteId })
+    .select("name steps createdAt")
+    .sort({ createdAt: -1 })
+    .lean()) as unknown as LeanFunnel[];
+
+  return (
+    <FunnelsClient
+      siteId={siteId}
+      funnels={await computeFunnels(siteId, funnels, days)}
+      days={days}
+    />
+  );
+}
 
 export default async function FunnelsPage({
   params,
@@ -23,11 +40,6 @@ export default async function FunnelsPage({
     ? Math.min(Math.max(rawDays, 1), 90)
     : 30;
 
-  const funnels = (await Funnel.find({ site: id })
-    .select("name steps createdAt")
-    .sort({ createdAt: -1 })
-    .lean()) as unknown as LeanFunnel[];
-
   return (
     <div className="space-y-6">
       <div>
@@ -37,11 +49,9 @@ export default async function FunnelsPage({
         </p>
       </div>
       <SiteTabs siteId={id} />
-      <FunnelsClient
-        siteId={id}
-        funnels={await computeFunnels(id, funnels, days)}
-        days={days}
-      />
+      <Suspense fallback={<LoadingSkeleton />}>
+        <FunnelsSection siteId={id} days={days} />
+      </Suspense>
     </div>
   );
 }
