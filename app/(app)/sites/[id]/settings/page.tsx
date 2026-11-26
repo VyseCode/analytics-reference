@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { ownedSite, toSiteDTO } from "@/lib/access";
 import { buildSnippet } from "@/lib/snippet";
 import { SiteSettings } from "@/components/SiteSettings";
+import { TestEventPanel } from "@/components/TestEventPanel";
 
 export default async function SiteSettingsPage({
   params,
@@ -22,6 +23,7 @@ export default async function SiteSettingsPage({
         <p className="mt-1 text-sm text-slate-500">Manage {site.name}.</p>
       </div>
       <SiteSettings site={dto} snippet={buildSnippet(dto.trackingId)} />
+      <TestEventPanel trackingId={dto.trackingId} />
     </div>
   );
 }
